@@ -1,0 +1,26 @@
+Output Results For
+{{ APName }}
+
+---
+
+AP Association Output
+
+{% for item in AP_association[0] %}
+  {{ item }}
+{% endfor %}
+
+---
+
+AP Dot11 Config
+
+{% for item in Dot11Conf[0] %}
+  {{ item }}
+{% endfor %}
+
+----
+
+Switch VLAN 66 Conf
+
+{% for item in Vlan66Conf[0] %}
+  {{ item }}
+{% endfor %}
