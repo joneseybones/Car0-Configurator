@@ -1,0 +1,214 @@
+---
+- name: "Promt for Testing AP Name"
+  hosts: all
+  gather_facts: no
+
+  vars_prompt:
+   - name: "APName"
+     prompt: "Enter testing AP hostname"
+     private: no
+
+  vars:
+     split_APName: "{{ APName.split('-') }}"
+
+  tasks:
+
+     - name: Save Variables
+       set_fact:
+         APName: "{{ APName }}"
+         Position: "{{ split_APName[3] }}"
+
+- name: "Demonstrate connecting to switches"
+  hosts: SWITCH
+  gather_facts: no
+
+  tasks:
+
+     - name: Output Position
+       debug:
+         msg: "Testing {{ APName }} in position: {{ Position }}"
+
+     - name: Send Switch Config Commands (Rear)
+       ios_config:
+         lines:
+           - interface VLAN 66
+           - ip address 10.65.1.9 255.255.255.248
+       when: Position == "lr" or Position == "rr"
+
+     - name: Send Switch Config Commands (Front)
+       ios_config:
+         lines:
+           - interface VLAN 66
+           - ip address dhcp
+       when: Position == "lf" or Position == "rf"
+
+- name: Send AP Config Commands
+  hosts: AP
+  gather_facts: no
+
+  tasks:
+
+     - name: Send AP Config (Left Bridge)
+       ios_config:
+          lines:
+             - default interface dot 1
+             - int dot 1
+             - station-role root bridge
+             - load-interval 30
+             - encryption vlan 1 mode ciphers aes-ccm
+             - ssid BRIDGE-LEFT
+             - antenna gain 0
+             - probe-response gratuitous period 255
+             - stbc
+             - speed  basic-54.0 m23. a1ssnone a2ssnone a3ss7
+             - power local 5
+             - packet retries 2 drop-packet
+             - channel width 80
+             - channel 5745
+       when: Position == "lf"
+
+     - name: Send AP Config (Right Bridge)
+       ios_config:
+          lines:
+             - default interface dot 1
+             - int dot 1
+             - station-role root bridge
+             - load-interval 30
+             - encryption vlan 1 mode ciphers aes-ccm
+             - ssid BRIDGE-RIGHT
+             - antenna gain 0
+             - probe-response gratuitous period 255
+             - stbc
+             - speed  basic-54.0 m23. a1ssnone a2ssnone a3ss7
+             - power local 5
+             - packet retries 2 drop-packet
+             - channel width 80
+             - channel 36
+       when: Position == "rf"
+
+     - name: Send AP Config (Left Non-Bridge)
+       ios_config:
+          lines:
+             - default interface dot 1
+             - int dot 1
+             - station-role non-root bridge
+             - load-interval 30
+             - encryption vlan 1 mode ciphers aes-ccm
+             - ssid BRIDGE-LEFT
+             - antenna gain 0
+             - probe-response gratuitous period 255
+             - stbc
+             - speed  basic-54.0 m23. a1ssnone a2ssnone a3ss7
+             - power local 5
+             - packet retries 2 drop-packet
+
+       when: Position == "lr"
+
+     - name: Send AP Config (Right Non-Bridge)
+       ios_config:
+          lines:
+             - default interface dot 1
+             - int dot 1
+             - station-role non-root bridge
+             - load-interval 30
+             - encryption vlan 1 mode ciphers aes-ccm
+             - ssid BRIDGE-RIGHT
+             - antenna gain 0
+             - probe-response gratuitous period 255
+             - stbc
+             - speed  basic-54.0 m23. a1ssnone a2ssnone a3ss7
+             - power local 5
+             - packet retries 2 drop-packet
+             - station-role non-root bridge
+       when: Position == "rr"
+
+     - name: ipv4 DHCP release/renew
+       ios_command:
+          commands:
+             - release dhcp BVI 1
+             - renew dhcp BVI 1
+
+- name: Wait for OSPF Neighbourship
+  hosts: SWITCH
+  gather_facts: no
+
+  tasks:
+
+      - name: Wait for OSPF Neighbourship
+        ios_command:
+          commands: show ospfv3 neigh
+          wait_for: result[0] contains FULL
+        register: output
+
+      - name: PRINT
+        debug:
+          var: output.stdout_lines[0][3]
+
+- name: Gather AP Data
+  hosts: AP
+  gather_facts: no
+
+  tasks:
+
+      - name: Show Associations Information
+        ios_command:
+          commands: show dot11 associations all-client
+        register: output
+
+      - name: Set AP Association Data
+        set_fact:
+          AP_association: "{{ output.stdout_lines }}"
+
+      - name: Show Dot11 Interface Config
+        ios_command:
+          commands: show run int dot11 1
+        register: output
+
+      - name: Save Dot11 Interface Cfg
+        set_fact:
+          Dot11Conf: "{{ output.stdout_lines }}"
+
+      - name: PRINT
+        debug:
+          var: item
+        loop: "{{ AP_association[0] }}"
+
+      - name: PRINT
+        debug:
+          var: item
+        loop: "{{ Dot11Conf[0] }}"
+
+- name: Gather Switch Config
+  hosts: SWITCH
+  gather_facts: no
+
+  tasks:
+
+      - name: Show VLAN 66 Config
+        ios_command:
+          commands: show run int vlan 66
+        register: output
+
+      - name: Set VLAN 66 Config Var
+        set_fact:
+          Vlan66Conf: "{{ output.stdout_lines }}"
+
+- name: Output to Template
+  hosts: HOST
+  gather_facts: no
+
+  tasks:
+
+      - name: Save AP Output Var
+        set_fact:
+          AP_association: "{{ hostvars['2001:DB8:B::2']['AP_association'] }}"
+          Dot11Conf: "{{ hostvars['2001:DB8:B::2']['Dot11Conf'] }}"
+
+      - name: Save Switch Output Var
+        set_fact:
+          Vlan66Conf: "{{ hostvars['2001:DB8:A::1']['Vlan66Conf'] }}"
+
+      - template:
+          src: results.j2
+          dest: "./{{ APName }}.csv"
+          mode: 0777

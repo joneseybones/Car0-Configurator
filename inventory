@@ -1,0 +1,24 @@
+[SWITCH]
+2001:DB8:A::1
+
+[SWITCH:vars]
+ansible_become=yes
+ansible_become_method=enable
+ansible_connection=network_cli
+ansible_network_os=ios
+ansible_user=cisco
+ansible_ssh_pass=cisco
+
+[AP]
+2001:DB8:B::2
+
+[AP:vars]
+ansible_connection=network_cli
+ansible_user=cisco
+ansible_ssh_pass=cisco
+ansible_network_os=ios
+ansible_become=yes
+ansible_become_method=enable
+
+[HOST]
+127.0.0.1 ansible_connection=local ansible_network_os=ios
