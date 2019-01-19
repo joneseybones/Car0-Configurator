@@ -11,6 +11,7 @@ ansible_ssh_pass=cisco
 
 [AP]
 2001:DB8:B::2
+2001:DB8:B::3
 
 [AP:vars]
 ansible_connection=network_cli
